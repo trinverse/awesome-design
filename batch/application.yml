@@ -1,0 +1,254 @@
+spring:
+  application:
+    name: batch-orchestrator
+  
+  datasource:
+    url: jdbc:sqlserver://localhost:1433;databaseName=BatchOrchestrator;encrypt=true;trustServerCertificate=true
+    username: ${DB_USERNAME:batch_user}
+    password: ${DB_PASSWORD:encrypted_password}
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+    hikari:
+      maximum-pool-size: 30
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      pool-name: BatchOrchestratorPool
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.SQLServerDialect
+        format_sql: true
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+        generate_statistics: false
+    show-sql: false
+  
+  quartz:
+    job-store-type: jdbc
+    jdbc:
+      initialize-schema: never
+    properties:
+      org:
+        quartz:
+          scheduler:
+            instanceName: BatchOrchestrator
+            instanceId: AUTO
+          jobStore:
+            driverDelegateClass: org.quartz.impl.jdbcjobstore.MSSQLDelegate
+            useProperties: false
+            misfireThreshold: 60000
+            clusterCheckinInterval: 5000
+            isClustered: true
+          threadPool:
+            threadCount: 25
+            threadPriority: 5
+  
+  mail:
+    host: ${SMTP_HOST:smtp.bank.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:batch_alerts}
+    password: ${SMTP_PASSWORD:encrypted_password}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+  
+  cache:
+    type: caffeine
+    caffeine:
+      spec: maximumSize=1000,expireAfterWrite=600s
+  
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER_URI:https://auth.bank.com}
+
+server:
+  port: 8080
+  servlet:
+    context-path: /batch-orchestrator
+  compression:
+    enabled: true
+  error:
+    include-message: always
+    include-binding-errors: always
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,loggers
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: ${spring.application.name}
+      environment: ${ENVIRONMENT:development}
+
+logging:
+  level:
+    root: INFO
+    com.bank.batch: DEBUG
+    org.springframework.web: INFO
+    org.hibernate.SQL: DEBUG
+    org.quartz: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/batch-orchestrator.log
+    max-size: 100MB
+    max-history: 30
+
+batch:
+  orchestrator:
+    scheduler:
+      enabled: true
+      poll-interval-seconds: 10
+      batch-size: 100
+    
+    executor:
+      core-pool-size: 10
+      max-pool-size: 50
+      queue-capacity: 1000
+      thread-name-prefix: batch-executor-
+      keep-alive-seconds: 60
+    
+    symphony:
+      enabled: ${SYMPHONY_ENABLED:false}
+      endpoint: ${SYMPHONY_ENDPOINT:http://symphony-grid:8080}
+      api-key: ${SYMPHONY_API_KEY:encrypted_key}
+      connection-timeout: 5000
+      read-timeout: 30000
+      max-retry-attempts: 3
+    
+    file-watcher:
+      enabled: true
+      poll-interval-seconds: 30
+      thread-pool-size: 5
+    
+    alert:
+      enabled: true
+      retry-attempts: 3
+      retry-delay-seconds: 60
+      batch-size: 50
+    
+    cleanup:
+      enabled: true
+      cron: "0 0 2 * * ?"
+      retention-days: 90
+      batch-size: 1000
+    
+    monitoring:
+      metrics-enabled: true
+      trace-enabled: true
+      audit-enabled: true
+
+resilience4j:
+  retry:
+    instances:
+      symphony-api:
+        max-attempts: 3
+        wait-duration: 1s
+        retry-exceptions:
+          - java.io.IOException
+          - java.net.SocketTimeoutException
+      
+      database:
+        max-attempts: 3
+        wait-duration: 500ms
+        retry-exceptions:
+          - org.springframework.dao.TransientDataAccessException
+  
+  circuitbreaker:
+    instances:
+      symphony-api:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+      
+      alert-service:
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        failure-rate-threshold: 60
+        wait-duration-in-open-state: 60s
+  
+  bulkhead:
+    instances:
+      job-execution:
+        max-concurrent-calls: 50
+        max-wait-duration: 10s
+
+# Environment-specific configurations
+---
+spring:
+  config:
+    activate:
+      on-profile: production
+  
+  datasource:
+    url: jdbc:sqlserver://prod-db-cluster:1433;databaseName=BatchOrchestrator;encrypt=true
+    hikari:
+      maximum-pool-size: 50
+      minimum-idle: 10
+
+logging:
+  level:
+    root: WARN
+    com.bank.batch: INFO
+    org.hibernate.SQL: WARN
+
+batch:
+  orchestrator:
+    executor:
+      core-pool-size: 20
+      max-pool-size: 100
+      queue-capacity: 5000
+    
+    symphony:
+      enabled: true
+
+---
+spring:
+  config:
+    activate:
+      on-profile: development
+  
+  datasource:
+    url: jdbc:sqlserver://dev-db:1433;databaseName=BatchOrchestrator;encrypt=false
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+logging:
+  level:
+    root: DEBUG
+    com.bank.batch: TRACE
+
+batch:
+  orchestrator:
+    symphony:
+      enabled: false

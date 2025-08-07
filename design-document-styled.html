@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scalable Social Feed System - Design Document</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background-color: #ffffff;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            font-size: 2.5em;
+            margin-bottom: 0.5em;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 0.3em;
+        }
+        
+        h2 {
+            color: #34495e;
+            font-size: 1.8em;
+            margin-top: 1.5em;
+            margin-bottom: 0.7em;
+        }
+        
+        h3 {
+            color: #555;
+            font-size: 1.4em;
+            margin-top: 1.3em;
+            margin-bottom: 0.5em;
+        }
+        
+        h4 {
+            color: #666;
+            font-size: 1.2em;
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+        }
+        
+        p {
+            margin-bottom: 1em;
+            text-align: justify;
+        }
+        
+        ul, ol {
+            margin-bottom: 1em;
+            padding-left: 30px;
+        }
+        
+        li {
+            margin-bottom: 0.5em;
+        }
+        
+        pre {
+            background-color: #f8f9fa;
+            border: 1px solid #e1e4e8;
+            border-radius: 6px;
+            padding: 16px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+            line-height: 1.45;
+        }
+        
+        code {
+            background-color: #f3f4f6;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        
+        pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        
+        .architecture-diagram {
+            background-color: #f8f9fa;
+            border: 1px solid #e1e4e8;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            overflow-x: auto;
+        }
+        
+        strong {
+            color: #2c3e50;
+        }
+        
+        .section {
+            margin-bottom: 2em;
+        }
+        
+        .performance-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        .performance-table th,
+        .performance-table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        
+        .performance-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .performance-table tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        
+        .highlight {
+            background-color: #fff3cd;
+            padding: 15px;
+            border-left: 4px solid #ffc107;
+            margin: 20px 0;
+        }
+        
+        @media print {
+            body {
+                font-size: 11pt;
+                line-height: 1.5;
+            }
+            h1 { page-break-after: avoid; }
+            h2, h3, h4 { page-break-after: avoid; }
+            pre { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Scalable Social Feed System - Design Document</h1>
+    
+    <div class="section">
+        <h2>Executive Summary</h2>
+        <p>This document presents a scalable architecture for a social media feed system that efficiently handles millions of users and posts. The design specifically addresses performance bottlenecks caused by high-follower accounts through an innovative hybrid approach, ensuring consistent sub-second response times regardless of user follower counts.</p>
+    </div>
+
+    <div class="section">
+        <h2>Problem Statement</h2>
+        <p>Traditional social feed systems face critical scalability challenges when users with millions of followers create posts. A single post from such users can trigger millions of database writes, causing:</p>
+        <ul>
+            <li>System-wide performance degradation</li>
+            <li>Increased latency for all users</li>
+            <li>Database overload and potential failures</li>
+            <li>Poor user experience during peak usage</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>Solution Overview</h2>
+        <p>Our hybrid architecture dynamically routes content based on user characteristics:</p>
+        <ul>
+            <li><strong>Regular users</strong> (&lt; 5,000 followers): Utilize pre-computed feeds for optimal read performance</li>
+            <li><strong>High-follower users</strong> (≥ 5,000 followers): Employ on-demand content retrieval to prevent write amplification</li>
+        </ul>
+        <p>This approach maintains consistent performance while supporting unlimited scale.</p>
+    </div>
+
+    <div class="section">
+        <h2>System Architecture</h2>
+        
+        <h3>High-Level Architecture</h3>
+        <div class="architecture-diagram">
+            <pre>
+┌─────────────────────────────────────────────────────────────────────┐
+│                          Load Balancer                               │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+        ┌───────────────────────────┴───────────────────────────┐
+        │                                                       │
+┌───────▼────────┐    ┌──────────────┐    ┌──────────────┐   │
+│  API Gateway   │    │ API Gateway  │    │ API Gateway  │   │
+└───────┬────────┘    └──────┬───────┘    └──────┬───────┘   │
+        │                     │                    │           │
+        └─────────────────────┴────────────────────┘           │
+                              │                                │
+                    ┌─────────▼──────────┐                    │
+                    │   API Servers      │◄───────────────────┘
+                    │   (Stateless)      │
+                    └─────────┬──────────┘
+                              │
+        ┌─────────────────────┼─────────────────────────┐
+        │                     │                         │
+┌───────▼────────┐    ┌──────▼───────┐    ┌───────────▼────────┐
+│  Post Service  │    │ Feed Service │    │  User Service      │
+└───────┬────────┘    └──────┬───────┘    └───────────┬────────┘
+        │                     │                         │
+        │              ┌──────▼───────┐                │
+        │              │Message Queue │                │
+        │              │  (Kafka)     │                │
+        │              └──────┬───────┘                │
+        │                     │                         │
+        │              ┌──────▼───────┐                │
+        │              │ Fan-out      │                │
+        │              │ Service      │                │
+        │              └──────┬───────┘                │
+        │                     │                         │
+┌───────▼────────────────────▼────────────────────────▼────────┐
+│                      Data Layer                               │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐             │
+│  │  Post DB   │  │  Feed DB   │  │  User DB   │             │
+│  │ (Cassandra)│  │ (Cassandra)│  │ (PostgreSQL│             │
+│  └────────────┘  └────────────┘  └────────────┘             │
+│                                                               │
+│  ┌─────────────────────────────────────────────┐            │
+│  │            Redis Cache Layer                 │            │
+│  └─────────────────────────────────────────────┘            │
+└───────────────────────────────────────────────────────────────┘
+            </pre>
+        </div>
+
+        <h3>Data Model</h3>
+        <h4>Entity Relationship Diagram</h4>
+        <div class="architecture-diagram">
+            <pre>
+┌─────────────────────┐          ┌─────────────────────┐
+│       Users         │          │       Posts         │
+├─────────────────────┤          ├─────────────────────┤
+│ user_id (PK)       │          │ post_id (PK)       │
+│ username           │          │ author_id (FK)     │
+│ email              │          │ content            │
+│ follower_count     │          │ media_urls[]       │
+│ is_celebrity       │          │ created_at         │
+│ created_at         │          │ likes_count        │
+│ profile_image_url  │          │ comments_count     │
+└─────────────────────┘          └─────────────────────┘
+         │                                │
+         │ 1                              │ 1
+         │                                │
+         │ M                              │ M
+         ▼                                ▼
+┌─────────────────────┐          ┌─────────────────────┐
+│      Follows        │          │       Feeds         │
+├─────────────────────┤          ├─────────────────────┤
+│ follower_id (FK)   │          │ user_id (FK)       │
+│ following_id (FK)  │          │ post_id (FK)       │
+│ created_at         │          │ created_at         │
+│ (follower_id,      │          │ (user_id,          │
+│  following_id) PK  │          │  created_at) PK    │
+└─────────────────────┘          └─────────────────────┘
+            </pre>
+        </div>
+
+        <h3>Component Details</h3>
+        
+        <h4>1. API Gateway</h4>
+        <ul>
+            <li>Request routing and load balancing</li>
+            <li>Authentication and rate limiting</li>
+            <li>Request validation and transformation</li>
+        </ul>
+
+        <h4>2. API Servers</h4>
+        <ul>
+            <li>Stateless application logic</li>
+            <li>User type detection and routing</li>
+            <li>Feed assembly and sorting</li>
+        </ul>
+
+        <h4>3. Post Service</h4>
+        <ul>
+            <li>Post creation and storage</li>
+            <li>Media handling and validation</li>
+            <li>Post retrieval for celebrity users</li>
+        </ul>
+
+        <h4>4. Feed Service</h4>
+        <ul>
+            <li>Pre-computed feed management</li>
+            <li>Feed retrieval and caching</li>
+            <li>Hybrid feed assembly</li>
+        </ul>
+
+        <h4>5. User Service</h4>
+        <ul>
+            <li>User profile management</li>
+            <li>Follower count tracking</li>
+            <li>Celebrity status determination</li>
+        </ul>
+
+        <h4>6. Message Queue (Kafka)</h4>
+        <ul>
+            <li>Asynchronous task distribution</li>
+            <li>Fan-out job queuing</li>
+            <li>System decoupling</li>
+        </ul>
+
+        <h4>7. Fan-out Service</h4>
+        <ul>
+            <li>Distributed feed updates</li>
+            <li>Batch processing optimization</li>
+            <li>Regular user feed population</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>Data Flow Diagrams</h2>
+        
+        <h3>Write Path - Regular User</h3>
+        <div class="architecture-diagram">
+            <pre>
+User Device          API Gateway         API Server         Post Service
+    │                    │                   │                  │
+    │  Create Post       │                   │                  │
+    ├───────────────────>│                   │                  │
+    │                    │   Forward          │                  │
+    │                    ├──────────────────>│                  │
+    │                    │                   │  Check User Type │
+    │                    │                   ├─────────┐        │
+    │                    │                   │         │        │
+    │                    │                   │<────────┘        │
+    │                    │                   │  Save Post       │
+    │                    │                   ├─────────────────>│
+    │                    │                   │                  │
+    │                    │                   │                  ├──> Post DB
+    │                    │                   │                  │
+    │                    │                   │  Publish to Queue│
+    │                    │                   ├─────────────────>│
+    │                    │                   │                  │
+    │                    │                   │                  ├──> Kafka
+    │                    │                   │                  │
+    │  Success Response  │                   │                  │
+    │<───────────────────┼───────────────────┤                  │
+    │                    │                   │                  │
+    
+                            Asynchronous Fan-out Process
+                                        │
+                                        ▼
+                                 ┌─────────────┐
+                                 │  Fan-out    │
+                                 │  Service    │
+                                 └──────┬──────┘
+                                        │
+                                        ├──> Get Followers
+                                        │
+                                        ├──> Batch Updates
+                                        │
+                                        └──> Update Feed DB
+            </pre>
+        </div>
+
+        <h3>Write Path - Celebrity User</h3>
+        <div class="architecture-diagram">
+            <pre>
+User Device          API Gateway         API Server         Post Service
+    │                    │                   │                  │
+    │  Create Post       │                   │                  │
+    ├───────────────────>│                   │                  │
+    │                    │   Forward          │                  │
+    │                    ├──────────────────>│                  │
+    │                    │                   │  Check User Type │
+    │                    │                   ├─────────┐        │
+    │                    │                   │         │        │
+    │                    │                   │<────────┘        │
+    │                    │                   │  (Celebrity)     │
+    │                    │                   │  Save Post Only  │
+    │                    │                   ├─────────────────>│
+    │                    │                   │                  │
+    │                    │                   │                  ├──> Post DB
+    │                    │                   │                  │
+    │  Success Response  │                   │                  │
+    │<───────────────────┼───────────────────┤                  │
+    │                    │                   │                  │
+    
+    Note: No fan-out process triggered for celebrity posts
+            </pre>
+        </div>
+
+        <h3>Read Path - Hybrid Feed Assembly</h3>
+        <div class="architecture-diagram">
+            <pre>
+User Device          API Gateway         API Server         Services
+    │                    │                   │                  │
+    │  Request Feed      │                   │                  │
+    ├───────────────────>│                   │                  │
+    │                    │   Forward          │                  │
+    │                    ├──────────────────>│                  │
+    │                    │                   │                  │
+    │                    │                   ├── Get Base Feed ─┼──> Cache/Feed DB
+    │                    │                   │                  │
+    │                    │                   ├── Get Celebrity ─┼──> Post DB
+    │                    │                   │     Posts        │
+    │                    │                   │                  │
+    │                    │                   │  Merge & Sort    │
+    │                    │                   ├─────────┐        │
+    │                    │                   │         │        │
+    │                    │                   │<────────┘        │
+    │                    │                   │                  │
+    │  Feed Response     │                   │                  │
+    │<───────────────────┼───────────────────┤                  │
+    │                    │                   │                  │
+            </pre>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Performance Characteristics</h2>
+        
+        <h3>Write Performance</h3>
+        <ul>
+            <li><strong>Regular Users</strong>: O(1) write + async O(N) fan-out (N = follower count)</li>
+            <li><strong>Celebrity Users</strong>: O(1) write only</li>
+            <li><strong>Write Latency</strong>: &lt; 50ms for all users</li>
+        </ul>
+
+        <h3>Read Performance</h3>
+        <ul>
+            <li><strong>Base Feed Retrieval</strong>: O(1) from cache/pre-computed feed</li>
+            <li><strong>Celebrity Post Retrieval</strong>: O(M) where M = number of followed celebrities</li>
+            <li><strong>Read Latency</strong>: &lt; 100ms for 99th percentile</li>
+        </ul>
+
+        <h3>Scalability Metrics</h3>
+        <ul>
+            <li>Supports 100M+ active users</li>
+            <li>Handles 1M+ posts per minute</li>
+            <li>Maintains &lt; 100ms feed load time</li>
+            <li>Zero performance degradation with celebrity posts</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>Implementation Considerations</h2>
+        
+        <h3>Database Selection</h3>
+        <ul>
+            <li><strong>User Data</strong>: PostgreSQL for ACID compliance and complex queries</li>
+            <li><strong>Posts & Feeds</strong>: Cassandra for horizontal scalability and write throughput</li>
+            <li><strong>Cache Layer</strong>: Redis for sub-millisecond response times</li>
+        </ul>
+
+        <h3>Optimization Strategies</h3>
+        <ol>
+            <li><strong>Intelligent Caching</strong>: Cache celebrity posts with higher TTL</li>
+            <li><strong>Batch Processing</strong>: Group fan-out operations for efficiency</li>
+            <li><strong>Connection Pooling</strong>: Minimize database connection overhead</li>
+            <li><strong>CDN Integration</strong>: Serve media content from edge locations</li>
+        </ol>
+
+        <h3>Monitoring & Observability</h3>
+        <ul>
+            <li>Real-time performance metrics dashboard</li>
+            <li>Automated alerting for threshold breaches</li>
+            <li>Distributed tracing for request flow analysis</li>
+            <li>A/B testing framework for threshold optimization</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>Conclusion</h2>
+        <p>This hybrid architecture successfully addresses the scalability challenges of modern social media platforms. By intelligently routing content based on user characteristics, the system maintains consistent performance while supporting unlimited growth. The design ensures that all users, regardless of their follower count, experience fast and reliable service.</p>
+    </div>
+</body>
+</html>
