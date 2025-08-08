@@ -1,0 +1,4 @@
+rootProject.name = 'batch-orchestrator'
+
+include 'backend'
+include 'frontend'

@@ -1,0 +1,82 @@
+plugins {
+    id 'base'
+    id 'com.github.node-gradle.node' version '7.0.1'
+}
+
+node {
+    version = '18.18.0'
+    npmVersion = '10.2.0'
+    download = true
+    
+    // Configure for proxy/Artifactory if needed
+    if (project.hasProperty('npmRegistryUrl')) {
+        npmRegistryUrl = project.property('npmRegistryUrl')
+    }
+    
+    // Set proxy for Node.js download if configured
+    if (project.hasProperty('systemProp.http.proxyHost')) {
+        proxy = "http://${project.property('systemProp.http.proxyHost')}:${project.property('systemProp.http.proxyPort')}"
+    }
+}
+
+// Install dependencies
+task npmInstallDependencies(type: NpmTask) {
+    def argsList = ['install']
+    
+    // Use Artifactory if configured
+    if (project.hasProperty('npmRegistryUrl')) {
+        argsList.add('--registry')
+        argsList.add(project.property('npmRegistryUrl'))
+    }
+    
+    // Set proxy if configured
+    if (project.hasProperty('systemProp.http.proxyHost')) {
+        argsList.add('--proxy')
+        argsList.add("http://${project.property('systemProp.http.proxyHost')}:${project.property('systemProp.http.proxyPort')}")
+        argsList.add('--https-proxy')
+        argsList.add("http://${project.property('systemProp.https.proxyHost')}:${project.property('systemProp.https.proxyPort')}")
+    }
+    
+    args = argsList
+}
+
+// Build Angular application
+task buildAngular(type: NpmTask, dependsOn: npmInstallDependencies) {
+    args = ['run', 'build:prod']
+}
+
+// Run Angular development server
+task runFrontend(type: NpmTask, dependsOn: npmInstallDependencies) {
+    args = ['start']
+}
+
+// Run tests
+task testFrontend(type: NpmTask, dependsOn: npmInstallDependencies) {
+    args = ['test', '--', '--watch=false', '--browsers=ChromeHeadless']
+}
+
+// Lint
+task lintFrontend(type: NpmTask, dependsOn: npmInstallDependencies) {
+    args = ['run', 'lint']
+}
+
+// Clean task
+clean {
+    delete 'node_modules'
+    delete 'dist'
+    delete '.angular'
+}
+
+// Make build depend on Angular build
+build.dependsOn buildAngular
+
+// Configure output directory for built files
+task copyDistToBackend(type: Copy, dependsOn: buildAngular) {
+    from 'dist/batch-orchestrator-frontend'
+    into '../backend/src/main/resources/static'
+}
+
+// Optional: Include frontend build in backend JAR
+if (project.hasProperty('includeInBackend')) {
+    build.finalizedBy copyDistToBackend
+}

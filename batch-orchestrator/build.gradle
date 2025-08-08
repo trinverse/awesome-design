@@ -1,0 +1,64 @@
+// Root build.gradle for monorepo
+plugins {
+    id 'base'
+}
+
+allprojects {
+    group = 'com.bank'
+    version = '1.0.0'
+    
+    // Configure repositories for all projects
+    repositories {
+        // If Artifactory is configured and not the default placeholder, use it
+        if (project.hasProperty('artifactoryUrl') && !project.property('artifactoryUrl').toString().contains('your-artifactory-url')) {
+            maven {
+                url "${artifactoryUrl}/maven-virtual"
+                credentials {
+                    username = project.findProperty('artifactoryUser') ?: ''
+                    password = project.findProperty('artifactoryPassword') ?: ''
+                }
+                allowInsecureProtocol = true // Only if your Artifactory uses HTTP
+            }
+        } else {
+            // Fallback to public repositories (remove in production)
+            mavenCentral()
+            google()
+        }
+    }
+}
+
+subprojects {
+    // Common configuration for all subprojects
+    apply plugin: 'base'
+    
+    // Configure proxy if properties are set
+    if (project.hasProperty('systemProp.http.proxyHost')) {
+        System.setProperty('http.proxyHost', project.property('systemProp.http.proxyHost'))
+        System.setProperty('http.proxyPort', project.property('systemProp.http.proxyPort'))
+        System.setProperty('https.proxyHost', project.property('systemProp.https.proxyHost'))
+        System.setProperty('https.proxyPort', project.property('systemProp.https.proxyPort'))
+        
+        if (project.hasProperty('systemProp.http.nonProxyHosts')) {
+            System.setProperty('http.nonProxyHosts', project.property('systemProp.http.nonProxyHosts'))
+            System.setProperty('https.nonProxyHosts', project.property('systemProp.https.nonProxyHosts'))
+        }
+    }
+}
+
+// Task to build all projects
+task buildAll {
+    dependsOn ':backend:build', ':frontend:build'
+    description = 'Build all projects in the monorepo'
+}
+
+// Task to clean all projects
+task cleanAll {
+    dependsOn ':backend:clean', ':frontend:clean'
+    description = 'Clean all projects in the monorepo'
+}
+
+// Wrapper task configuration
+wrapper {
+    gradleVersion = '8.5'
+    distributionType = Wrapper.DistributionType.ALL
+}
