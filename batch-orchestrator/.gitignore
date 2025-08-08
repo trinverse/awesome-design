@@ -1,0 +1,61 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# IDE
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+.vscode/
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# H2 Database files
+*.db
+*.mv.db
+*.trace.db
+
+# Application
+application-local.yml
+application-*.yml
+!application.yml
+
+# Compiled files
+*.class
+*.jar
+*.war
+*.ear
+
+# Package Files
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Maven
+target/
+
+# Node (if frontend is added)
+node_modules/
+
+# Temporary files
+*.tmp
+*.swp
+*~
